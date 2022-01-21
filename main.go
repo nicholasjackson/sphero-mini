@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/niemeyer/pretty"
 	"tinygo.org/x/bluetooth"
 )
 
@@ -48,14 +49,64 @@ func connect(addr string) {
 		}
 	})
 
-	adapter.SetConnectHandler(func(device bluetooth.Addresser, connected bool) {
-		fmt.Println("connected", connected)
+	connected := make(chan bool)
 
-		return
-	})
+	//adapter.SetConnectHandler(func(d bluetooth.Addresser, c bool) {
+	//	fmt.Println("connected", connected)
 
-	_, err := adapter.Connect(bleResult.Address, bluetooth.ConnectionParams{})
+	//	svcs, err := device.DiscoverServices([]bluetooth.UUID{})
+	//	if err != nil {
+	//		panic(err)
+	//	}
+
+	//	pretty.Println(svcs)
+
+	//	connected <- c
+	//	//service := device.DiscoverServices
+	//	return
+	//})
+
+	var device *bluetooth.Device
+	var err error
+	device, err = adapter.Connect(bleResult.Address, bluetooth.ConnectionParams{})
 	if err != nil {
 		panic(err)
 	}
+
+	services, err := device.DiscoverServices([]bluetooth.UUID{})
+	if err != nil {
+		panic(err)
+	}
+
+	charAPIV2 := getCharacteristic(services, "00010002-574f-4f20-5370-6865726f2121")
+	charAntiDOS := getCharacteristic(services, "00020005-574f-4f20-5370-6865726f2121")
+	charDFU := getCharacteristic(services, "00020002-574f-4f20-5370-6865726f2121")
+	charDFU2 := getCharacteristic(services, "00020004-574f-4f20-5370-6865726f2121")
+
+	pretty.Println(charAPIV2)
+	pretty.Println(charAntiDOS)
+	pretty.Println(charDFU)
+	pretty.Println(charDFU2)
+
+	// wait for connection
+	select {
+	case <-connected:
+		fmt.Println("done")
+	}
+}
+
+func getCharacteristic(s []bluetooth.DeviceService, uuid string) bluetooth.DeviceCharacteristic {
+	uu, err := bluetooth.ParseUUID(uuid)
+	if err != nil {
+		panic(err)
+	}
+
+	for _, s := range s {
+		c, err := s.DiscoverCharacteristics([]bluetooth.UUID{uu})
+		if err == nil {
+			return c[0]
+		}
+	}
+
+	panic(fmt.Errorf("characteristic: %s not found", uuid))
 }
