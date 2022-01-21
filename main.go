@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/niemeyer/pretty"
+	"github.com/hashicorp/go-hclog"
 	"tinygo.org/x/bluetooth"
 )
 
@@ -39,10 +39,13 @@ func scan() {
 }
 
 func connect(addr string) {
+	log := hclog.New(&hclog.LoggerOptions{Level: hclog.Trace})
+
 	var bleResult bluetooth.ScanResult
 
+	fmt.Println("Discoving device...")
 	adapter.Scan(func(a *bluetooth.Adapter, d bluetooth.ScanResult) {
-		fmt.Println("device: %s %s", d.Address.String(), d.LocalName())
+		log.Debug("Found device", "name", d.LocalName(), "address", d.Address.String())
 		if d.Address.String() == addr {
 			adapter.StopScan()
 			bleResult = d
@@ -51,21 +54,7 @@ func connect(addr string) {
 
 	connected := make(chan bool)
 
-	//adapter.SetConnectHandler(func(d bluetooth.Addresser, c bool) {
-	//	fmt.Println("connected", connected)
-
-	//	svcs, err := device.DiscoverServices([]bluetooth.UUID{})
-	//	if err != nil {
-	//		panic(err)
-	//	}
-
-	//	pretty.Println(svcs)
-
-	//	connected <- c
-	//	//service := device.DiscoverServices
-	//	return
-	//})
-
+	fmt.Println("Connecting...")
 	var device *bluetooth.Device
 	var err error
 	device, err = adapter.Connect(bleResult.Address, bluetooth.ConnectionParams{})
@@ -83,10 +72,15 @@ func connect(addr string) {
 	charDFU := getCharacteristic(services, "00020002-574f-4f20-5370-6865726f2121")
 	charDFU2 := getCharacteristic(services, "00020004-574f-4f20-5370-6865726f2121")
 
-	pretty.Println(charAPIV2)
-	pretty.Println(charAntiDOS)
-	pretty.Println(charDFU)
-	pretty.Println(charDFU2)
+	sphero := &Sphero{
+		charAPIV2:   charAPIV2,
+		charAntiDOS: charAntiDOS,
+		charDFU:     charDFU,
+		charDFU2:    charDFU2,
+		log:         log,
+	}
+
+	sphero.Wake()
 
 	// wait for connection
 	select {
