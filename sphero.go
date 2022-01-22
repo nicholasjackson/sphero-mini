@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-hclog"
+	"github.com/kr/pretty"
 	"tinygo.org/x/bluetooth"
 )
 
@@ -32,6 +33,58 @@ const (
 
 	SystemInfoCommandsBootLoaderVersion = 0x01
 )
+
+type Payload struct {
+	Flags    uint8
+	DeviceID uint8
+	Command  uint8
+	Sequence uint8
+	Error    uint8
+	Payload  []byte
+}
+
+func (p *Payload) Encode() []byte {
+	sendBytes := []byte{
+		DataPacketStart, // first byte is always 0x08
+		p.Flags,         // set the flags
+		p.DeviceID,      // send is for the given device id
+		p.Command,       // with the command
+		p.Sequence,      // set the sequence id to ensure that packets are orderable
+	}
+
+	// add the payload
+	sendBytes = append(sendBytes, p.Payload...)
+
+	// calculateChecksum
+	cs := calculateChecksum(sendBytes)
+
+	sendBytes = append(sendBytes, cs, DataPacketEnd)
+
+	return sendBytes
+}
+
+func (p *Payload) Decode(d []byte) error {
+	p.Flags = d[1]
+	p.DeviceID = d[2]
+	p.Command = d[3]
+	p.Sequence = d[4]
+	p.Error = d[5]
+
+	checksum := d[6]
+
+	// compare checksum
+	cc := calculateChecksum(d[1 : len(d)-1])
+
+	if checksum != cc {
+		return fmt.Errorf("checksum invalid")
+	}
+
+	if len(d) > 7 {
+		p.Payload = d[7 : len(d)-2]
+	}
+
+	return nil
+}
 
 type Sphero struct {
 	charAPIV2      bluetooth.DeviceCharacteristic
@@ -117,40 +170,39 @@ func (s *Sphero) SetLEDColor(r, g, b uint8) error {
 
 	payload := []byte{0x00, 0x0e, r, g, b}
 
-	_, err := s.send(s.charAPIV2, DeviceUserIO, UserIOCommandsAllLEDs, true, payload)
+	resp, err := s.send(s.charAPIV2, DeviceUserIO, UserIOCommandsAllLEDs, true, payload)
+	pretty.Println(resp)
 
 	return err
 }
 
 // https://github.com/MProx/Sphero_mini/blob/1dea6ff7f59260ea5ecee9cb9a7c9f46f1f8a6d9/sphero_mini.py#L243
-func (s *Sphero) send(dc bluetooth.DeviceCharacteristic, deviceID, commandID byte, expectResponse bool, payload []byte) ([]byte, error) {
+func (s *Sphero) send(dc bluetooth.DeviceCharacteristic, deviceID, commandID byte, expectResponse bool, payload []byte) (*Payload, error) {
 	// sequence ensures we can associate a request with a response
 	s.sequenceNo += 1
 	if s.sequenceNo > 255 {
 		s.sequenceNo = 0
 	}
 
+	//FlagResetsInactivityTimeout + FlagRequestsResponse
+
 	// are we expecting a response
 	s.expectResponse = expectResponse
 
 	// define the header for the send request
-	sendBytes := []byte{
-		DataPacketStart, // first byte is always 0x08
-		FlagResetsInactivityTimeout + FlagRequestsResponse, // set the flags
-		deviceID,           // send is for the given device id
-		commandID,          // with the command
-		byte(s.sequenceNo), // set the sequence id to ensure that packets are orderable
+	p := Payload{
+		Flags:    FlagResetsInactivityTimeout + FlagRequestsResponse, // set the flags
+		DeviceID: deviceID,                                           // send is for the given device id
+		Command:  commandID,                                          // with the command
+		Sequence: byte(s.sequenceNo),                                 // set the sequence id to ensure that packets are orderable
+		Payload:  payload,
 	}
 
-	// add the payload
-	sendBytes = append(sendBytes, payload...)
+	data := p.Encode()
 
-	// add the end of the request checksum and end byte
-	sendBytes = append(sendBytes, calculateChecksum(sendBytes), DataPacketEnd)
+	s.log.Trace("Sending data", "bytes", data)
 
-	s.log.Trace("Sending data", "bytes", sendBytes)
-
-	_, err := dc.WriteWithoutResponse(sendBytes)
+	_, err := dc.WriteWithoutResponse(data)
 	if err != nil {
 		s.log.Error("Error sending data")
 		return nil, err
@@ -168,7 +220,9 @@ func (s *Sphero) send(dc bluetooth.DeviceCharacteristic, deviceID, commandID byt
 		return nil, fmt.Errorf("Timeout waiting for data")
 	case buf := <-s.outData:
 		s.log.Debug("Got response", "data", buf)
-		return buf, nil
+		p := &Payload{}
+		p.Decode(buf)
+		return p, nil
 	}
 
 	return nil, nil

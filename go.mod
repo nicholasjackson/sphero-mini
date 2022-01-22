@@ -4,6 +4,7 @@ go 1.17
 
 require (
 	github.com/hashicorp/go-hclog v1.1.0
+	github.com/kr/pretty v0.1.0
 	tinygo.org/x/bluetooth v0.2.0
 )
 
@@ -13,6 +14,7 @@ require (
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/godbus/dbus/v5 v5.0.3 // indirect
+	github.com/kr/text v0.1.0 // indirect
 	github.com/mattn/go-colorable v0.1.4 // indirect
 	github.com/mattn/go-isatty v0.0.10 // indirect
 	github.com/muka/go-bluetooth v0.0.0-20200928120822-44d49b402aee // indirect
