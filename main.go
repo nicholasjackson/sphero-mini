@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/hashicorp/go-hclog"
 	"tinygo.org/x/bluetooth"
@@ -45,7 +46,7 @@ func connect(addr string) {
 
 	fmt.Println("Discoving device...")
 	adapter.Scan(func(a *bluetooth.Adapter, d bluetooth.ScanResult) {
-		log.Debug("Found device", "name", d.LocalName(), "address", d.Address.String())
+		log.Trace("Found device", "name", d.LocalName(), "address", d.Address.String())
 		if d.Address.String() == addr {
 			adapter.StopScan()
 			bleResult = d
@@ -54,7 +55,7 @@ func connect(addr string) {
 
 	connected := make(chan bool)
 
-	fmt.Println("Connecting...")
+	log.Info("Connecting", "device", addr)
 	var device *bluetooth.Device
 	var err error
 	device, err = adapter.Connect(bleResult.Address, bluetooth.ConnectionParams{})
@@ -80,7 +81,22 @@ func connect(addr string) {
 		log:         log,
 	}
 
-	sphero.Wake()
+	sphero.Setup()
+	//sphero.GetBatteryVoltage()
+	sphero.SetLEDColor(255, 255, 255)
+	time.Sleep(1 * time.Second)
+
+	sphero.SetLEDColor(0, 0, 0)
+	time.Sleep(1 * time.Second)
+
+	sphero.SetLEDColor(255, 255, 255)
+	time.Sleep(1 * time.Second)
+
+	sphero.SetLEDColor(0, 0, 0)
+	time.Sleep(1 * time.Second)
+
+	time.Sleep(5 * time.Second)
+	sphero.Sleep()
 
 	// wait for connection
 	select {
