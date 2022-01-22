@@ -87,20 +87,22 @@ func (p *Payload) Decode(d []byte) error {
 }
 
 type Sphero struct {
-	charAPIV2      bluetooth.DeviceCharacteristic
-	charAntiDOS    bluetooth.DeviceCharacteristic
-	charDFU        bluetooth.DeviceCharacteristic
-	charDFU2       bluetooth.DeviceCharacteristic
-	sequenceNo     int
-	log            hclog.Logger
-	outBuffer      []byte
-	outData        chan []byte
-	expectResponse bool
+	charAPIV2               bluetooth.DeviceCharacteristic
+	charAntiDOS             bluetooth.DeviceCharacteristic
+	charDFU                 bluetooth.DeviceCharacteristic
+	charDFU2                bluetooth.DeviceCharacteristic
+	sequenceNo              int
+	log                     hclog.Logger
+	outBuffer               []byte
+	commandResponse         chan *Payload
+	streamingResponse       chan *Payload
+	expectedCommandSequence int
 }
 
 func (s *Sphero) Setup() error {
 	s.log.Debug("Setup Sphero")
-	s.outData = make(chan []byte)
+	s.commandResponse = make(chan *Payload)
+	s.streamingResponse = make(chan *Payload)
 
 	s.charAPIV2.EnableNotifications(func(buf []byte) {
 		//s.log.Trace("Got response apiv2", "data", buf)
@@ -115,13 +117,17 @@ func (s *Sphero) Setup() error {
 
 		// if end packet send to channel
 		if buf[0] == DataPacketEnd {
-			if s.expectResponse {
-				s.outData <- s.outBuffer
+			// construct the payload
+			p := &Payload{}
+			p.Decode(s.outBuffer)
+
+			if s.expectedCommandSequence == int(p.Sequence) {
+				s.expectedCommandSequence = 0
+				s.commandResponse <- p
 				return
 			}
 
 			s.log.Trace("Got response, disposed", "data", s.outBuffer)
-			s.expectResponse = false
 		}
 
 	})
@@ -148,18 +154,21 @@ func (s *Sphero) Setup() error {
 
 // Wake brings the device out of sleep mode
 func (s *Sphero) Wake() error {
-	_, err := s.send(s.charAPIV2, DevicePowerInfo, PowerCommandsWake, false, []byte{})
+	s.log.Debug("Wake")
+	_, err := s.send(s.charAPIV2, DevicePowerInfo, PowerCommandsWake, true, []byte{})
 
 	return err
 }
 
 func (s *Sphero) Sleep() error {
-	_, err := s.send(s.charAPIV2, DevicePowerInfo, PowerCommandsSleep, false, []byte{})
+	s.log.Debug("Sleep")
+	_, err := s.send(s.charAPIV2, DevicePowerInfo, PowerCommandsSleep, true, []byte{})
 
 	return err
 }
 
 func (s *Sphero) GetBatteryVoltage() error {
+	s.log.Debug("GetBatteryVoltage")
 	_, err := s.send(s.charAPIV2, DevicePowerInfo, PowerCommandsBatteryVoltage, true, []byte{})
 
 	return err
@@ -187,7 +196,9 @@ func (s *Sphero) send(dc bluetooth.DeviceCharacteristic, deviceID, commandID byt
 	//FlagResetsInactivityTimeout + FlagRequestsResponse
 
 	// are we expecting a response
-	s.expectResponse = expectResponse
+	if expectResponse {
+		s.expectedCommandSequence = s.sequenceNo
+	}
 
 	// define the header for the send request
 	p := Payload{
@@ -218,10 +229,8 @@ func (s *Sphero) send(dc bluetooth.DeviceCharacteristic, deviceID, commandID byt
 	case <-timeout:
 		s.log.Error("Timeout waiting for response")
 		return nil, fmt.Errorf("Timeout waiting for data")
-	case buf := <-s.outData:
-		s.log.Debug("Got response", "data", buf)
-		p := &Payload{}
-		p.Decode(buf)
+	case p := <-s.commandResponse:
+		s.log.Debug("Got response", "data", p)
 		return p, nil
 	}
 
