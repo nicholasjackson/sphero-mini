@@ -105,13 +105,13 @@ func connect(addr string) {
 	}
 }
 
-func getCharacteristic(s []bluetooth.DeviceService, uuid string) bluetooth.DeviceCharacteristic {
+func getCharacteristic(ds []bluetooth.DeviceService, uuid string) bluetooth.DeviceCharacteristic {
 	uu, err := bluetooth.ParseUUID(uuid)
 	if err != nil {
 		panic(err)
 	}
 
-	for _, s := range s {
+	for _, s := range ds {
 		c, err := s.DiscoverCharacteristics([]bluetooth.UUID{uu})
 		if err == nil {
 			return c[0]

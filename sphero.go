@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/hashicorp/go-hclog"
 	"tinygo.org/x/bluetooth"
 )
@@ -31,19 +34,43 @@ const (
 )
 
 type Sphero struct {
-	charAPIV2   bluetooth.DeviceCharacteristic
-	charAntiDOS bluetooth.DeviceCharacteristic
-	charDFU     bluetooth.DeviceCharacteristic
-	charDFU2    bluetooth.DeviceCharacteristic
-	sequenceNo  int
-	log         hclog.Logger
+	charAPIV2      bluetooth.DeviceCharacteristic
+	charAntiDOS    bluetooth.DeviceCharacteristic
+	charDFU        bluetooth.DeviceCharacteristic
+	charDFU2       bluetooth.DeviceCharacteristic
+	sequenceNo     int
+	log            hclog.Logger
+	outBuffer      []byte
+	outData        chan []byte
+	expectResponse bool
 }
 
 func (s *Sphero) Setup() error {
 	s.log.Debug("Setup Sphero")
+	s.outData = make(chan []byte)
 
 	s.charAPIV2.EnableNotifications(func(buf []byte) {
-		s.log.Trace("Got response apiv2", "data", buf)
+		//s.log.Trace("Got response apiv2", "data", buf)
+
+		// if start packet create a new buffer
+		if buf[0] == DataPacketStart {
+			s.outBuffer = []byte{}
+		}
+
+		// increment the buffer
+		s.outBuffer = append(s.outBuffer, buf[0])
+
+		// if end packet send to channel
+		if buf[0] == DataPacketEnd {
+			if s.expectResponse {
+				s.outData <- s.outBuffer
+				return
+			}
+
+			s.log.Trace("Got response, disposed", "data", s.outBuffer)
+			s.expectResponse = false
+		}
+
 	})
 
 	s.charAntiDOS.EnableNotifications(func(buf []byte) {
@@ -68,35 +95,43 @@ func (s *Sphero) Setup() error {
 
 // Wake brings the device out of sleep mode
 func (s *Sphero) Wake() error {
-	return s.send(s.charAPIV2, DevicePowerInfo, PowerCommandsWake, []byte{})
+	_, err := s.send(s.charAPIV2, DevicePowerInfo, PowerCommandsWake, false, []byte{})
+
+	return err
 }
 
 func (s *Sphero) Sleep() error {
-	return s.send(s.charAPIV2, DevicePowerInfo, PowerCommandsSleep, []byte{})
+	_, err := s.send(s.charAPIV2, DevicePowerInfo, PowerCommandsSleep, false, []byte{})
+
+	return err
 }
 
 func (s *Sphero) GetBatteryVoltage() error {
-	return s.send(s.charAPIV2, DevicePowerInfo, PowerCommandsBatteryVoltage, []byte{})
+	_, err := s.send(s.charAPIV2, DevicePowerInfo, PowerCommandsBatteryVoltage, true, []byte{})
+
+	return err
 }
 
 func (s *Sphero) SetLEDColor(r, g, b uint8) error {
 	s.log.Debug("Enabling LED", "r", r, "g", g, "b", b)
 
 	payload := []byte{0x00, 0x0e, r, g, b}
-	return s.send(s.charAPIV2, DeviceUserIO, UserIOCommandsAllLEDs, payload)
+
+	_, err := s.send(s.charAPIV2, DeviceUserIO, UserIOCommandsAllLEDs, true, payload)
+
+	return err
 }
 
 // https://github.com/MProx/Sphero_mini/blob/1dea6ff7f59260ea5ecee9cb9a7c9f46f1f8a6d9/sphero_mini.py#L243
-func (s *Sphero) send(dc bluetooth.DeviceCharacteristic, deviceID, commandID byte, payload []byte) error {
+func (s *Sphero) send(dc bluetooth.DeviceCharacteristic, deviceID, commandID byte, expectResponse bool, payload []byte) ([]byte, error) {
 	// sequence ensures we can associate a request with a response
 	s.sequenceNo += 1
 	if s.sequenceNo > 255 {
 		s.sequenceNo = 0
 	}
 
-	dc.EnableNotifications(func(buf []byte) {
-		s.log.Trace("Got response", "characteristics", dc.UUID, "data", buf)
-	})
+	// are we expecting a response
+	s.expectResponse = expectResponse
 
 	// define the header for the send request
 	sendBytes := []byte{
@@ -113,15 +148,30 @@ func (s *Sphero) send(dc bluetooth.DeviceCharacteristic, deviceID, commandID byt
 	// add the end of the request checksum and end byte
 	sendBytes = append(sendBytes, calculateChecksum(sendBytes), DataPacketEnd)
 
+	s.log.Trace("Sending data", "bytes", sendBytes)
+
 	_, err := dc.WriteWithoutResponse(sendBytes)
 	if err != nil {
 		s.log.Error("Error sending data")
-		return err
+		return nil, err
 	}
 
-	s.log.Trace("Sending data", "bytes", sendBytes)
+	if !expectResponse {
+		return nil, nil
+	}
 
-	return nil
+	// wait for response
+	timeout := time.After(10 * time.Second)
+	select {
+	case <-timeout:
+		s.log.Error("Timeout waiting for response")
+		return nil, fmt.Errorf("Timeout waiting for data")
+	case buf := <-s.outData:
+		s.log.Debug("Got response", "data", buf)
+		return buf, nil
+	}
+
+	return nil, nil
 }
 
 func calculateChecksum(b []byte) uint8 {
