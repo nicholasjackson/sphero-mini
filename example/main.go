@@ -54,16 +54,14 @@ func connect(addr string) {
 		os.Exit(1)
 	}
 
-	sphero.DoFor(1*time.Second, func() {
-		s.SetLEDColor(235, 64, 52)
-	})
-
-	sphero.DoWithDelay(1*time.Second,
-		func() { s.SetLEDColor(235, 64, 52) },
-		func() { s.SetLEDColor(52, 235, 88) },
-		func() { s.SetLEDColor(52, 122, 235) },
-		func() { s.SetLEDColor(0, 0, 0) },
-	)
+	s.
+		SetLEDColor(235, 64, 52).
+		Wait(1*time.Second).
+		SetLEDColor(52, 235, 88).
+		Wait(1*time.Second).
+		SetLEDColor(52, 122, 235).
+		Wait(1*time.Second).
+		SetLEDColor(0, 0, 0)
 
 	s.Sleep()
 

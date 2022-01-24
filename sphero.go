@@ -22,6 +22,7 @@ type Sphero struct {
 	commandResponse         chan *Payload
 	streamingResponse       chan *Payload
 	expectedCommandSequence int
+	lastError               error
 }
 
 // NewSphero creates a new sphero and attempts to connect to the device
