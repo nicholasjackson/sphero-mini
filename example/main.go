@@ -48,53 +48,32 @@ func connect(addr string) {
 		os.Exit(1)
 	}
 
-	s, err := sphero.NewSphero(addr, adapter, logger)
+	ball, err := sphero.NewSphero(addr, adapter, logger)
 	if err != nil {
 		fmt.Printf("Unable to create a new sphero: %s\n", err)
 		os.Exit(1)
 	}
 
-	s.
+	// enable the backlight, this is useful to see which direction the sphero is headed
+	ball.EnableBackLight()
+	time.Sleep(5 * time.Second)
+
+	ball.
 		SetLEDColor(235, 64, 52).
-		Wait(1*time.Second).
+		For(1*time.Second).
 		SetLEDColor(52, 235, 88).
-		Wait(1*time.Second).
+		For(1*time.Second).
 		SetLEDColor(52, 122, 235).
-		Wait(1*time.Second).
-		SetLEDColor(0, 0, 0)
+		For(1 * time.Second)
 
-	s.Sleep()
+	time.Sleep(5 * time.Second)
 
-	//sphero := &Sphero{
-	//	charAPIV2:   charAPIV2,
-	//	charAntiDOS: charAntiDOS,
-	//	charDFU:     charDFU,
-	//	charDFU2:    charDFU2,
-	//	log:         log,
-	//}
+	ball.Roll(0, 150).
+		For(1*time.Second).
+		Roll(180, 150).
+		For(1 * time.Second)
 
-	//sphero.Setup()
-	////sphero.GetBatteryVoltage()
-	//sphero.SetLEDColor(255, 255, 255)
-	//time.Sleep(1 * time.Second)
-
-	//sphero.SetLEDColor(0, 0, 0)
-	//time.Sleep(1 * time.Second)
-
-	//sphero.SetLEDColor(255, 255, 255)
-	//time.Sleep(1 * time.Second)
-
-	//sphero.SetLEDColor(0, 0, 0)
-	//time.Sleep(1 * time.Second)
-
-	//time.Sleep(5 * time.Second)
-	//sphero.Sleep()
-
-	//// wait for connection
-	//select {
-	//case <-connected:
-	//	fmt.Println("done")
-	//}
+	ball.Sleep()
 }
 
 func createLogger() hclog.Logger {

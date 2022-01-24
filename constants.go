@@ -11,6 +11,7 @@ const (
 
 	DevicePowerInfo = 0x13
 	DeviceUserIO    = 0x1a
+	DeviceDriving   = 0x16
 
 	PowerCommandsDeepSleep      = 0x00
 	PowerCommandsSleep          = 0x01
@@ -18,6 +19,8 @@ const (
 	PowerCommandsWake           = 0x0D
 
 	UserIOCommandsAllLEDs = 0x0e
+
+	DrivingCommandsWithHeading = 0x07
 
 	SystemInfoCommandsBootLoaderVersion = 0x01
 )

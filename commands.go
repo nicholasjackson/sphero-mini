@@ -7,8 +7,13 @@ import (
 	"tinygo.org/x/bluetooth"
 )
 
-func (s *Sphero) Wait(d time.Duration) *Sphero {
+func (s *Sphero) For(d time.Duration) *Sphero {
 	time.Sleep(d)
+
+	if s.next != nil {
+		s.next()
+		s.next = nil
+	}
 
 	return s
 }
@@ -31,6 +36,13 @@ func (s *Sphero) Wake() *Sphero {
 
 func (s *Sphero) Sleep() *Sphero {
 	s.log.Debug("Sleep")
+
+	if s.backlightEnabled {
+		s.DisableBackLight()
+	}
+
+	defer s.device.Disconnect()
+
 	_, err := s.send(s.charAPIV2, DevicePowerInfo, PowerCommandsSleep, true, []byte{})
 	if err != nil {
 		s.log.Error("unable to sleep sphero", "error", err)
@@ -60,6 +72,67 @@ func (s *Sphero) SetLEDColor(r, g, b uint8) *Sphero {
 	_, err := s.send(s.charAPIV2, DeviceUserIO, UserIOCommandsAllLEDs, true, payload)
 	if err != nil {
 		s.log.Error("unable to set LED color", "error", err)
+		s.lastError = err
+	}
+
+	s.next = func() {
+		// TODO: if the next call is set LED do not turn off as the transition is smoother
+		s.SetLEDColor(0, 0, 0)
+	}
+
+	return s
+}
+
+func (s *Sphero) EnableBackLight() *Sphero {
+	s.log.Debug("Set backlight LED")
+	s.backlightEnabled = true
+
+	payload := []byte{0x00, 0x01, 255}
+
+	_, err := s.send(s.charAPIV2, DeviceUserIO, UserIOCommandsAllLEDs, true, payload)
+	if err != nil {
+		s.log.Error("unable to set LED backlight", "error", err)
+		s.lastError = err
+	}
+
+	return s
+}
+
+func (s *Sphero) DisableBackLight() *Sphero {
+	s.log.Debug("Disable backlight LED")
+	s.backlightEnabled = false
+
+	payload := []byte{0x00, 0x01, 0}
+
+	_, err := s.send(s.charAPIV2, DeviceUserIO, UserIOCommandsAllLEDs, true, payload)
+	if err != nil {
+		s.log.Error("unable to set LED backlight", "error", err)
+		s.lastError = err
+	}
+
+	return s
+}
+
+// Roll towards heading given in degrees 0-360 at speed as an integer 0-255
+func (s *Sphero) Roll(heading, speed int) *Sphero {
+	s.log.Debug("Roll", "heading", heading, "speed", speed)
+
+	speedH := uint8((speed & 0xFF00) >> 8)
+	speedL := uint8(speed & 0xFF)
+	headingH := uint8((heading & 0xFF00) >> 8)
+	headingL := uint8(heading & 0xFF)
+
+	payload := []byte{speedL, headingH, headingL, speedH}
+
+	s.next = func() {
+		s.Roll(0, 1)
+		// give the ball time to stop before changing direction
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	_, err := s.send(s.charAPIV2, DeviceDriving, DrivingCommandsWithHeading, true, payload)
+	if err != nil {
+		s.log.Error("unable to Roll in direction", "heading", heading, "speed", speed, "error", err)
 		s.lastError = err
 	}
 

@@ -60,7 +60,7 @@ func (b *BluetoothAdapter) StopScanning() {
 func (b *BluetoothAdapter) Connect(addr bluetooth.Addresser) (*bluetooth.Device, error) {
 	device, err := b.adapter.Connect(addr, bluetooth.ConnectionParams{})
 	if err != nil {
-		return nil, fmt.Errorf("unable to connect to device: %s")
+		return nil, fmt.Errorf("unable to connect to device: %s", err)
 	}
 
 	return device, nil

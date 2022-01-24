@@ -12,6 +12,7 @@ import (
 // https://sdk.sphero.com/docs/api_spec/general_api
 
 type Sphero struct {
+	device                  *bluetooth.Device
 	charAPIV2               bluetooth.DeviceCharacteristic
 	charAntiDOS             bluetooth.DeviceCharacteristic
 	charDFU                 bluetooth.DeviceCharacteristic
@@ -23,6 +24,8 @@ type Sphero struct {
 	streamingResponse       chan *Payload
 	expectedCommandSequence int
 	lastError               error
+	backlightEnabled        bool
+	next                    func()
 }
 
 // NewSphero creates a new sphero and attempts to connect to the device
@@ -55,9 +58,6 @@ func NewSphero(addr string, adapter *BluetoothAdapter, l hclog.Logger) (*Sphero,
 
 	l.Debug("Connecting", "device", addr)
 
-	//connected := make(chan bool)
-
-	//log.Info("Connecting", "device", addr)
 	device, err := adapter.Connect(bleAddress)
 	if err != nil {
 		l.Error("Unable to connect to bluetooth deivce", "address", addr)
@@ -66,7 +66,7 @@ func NewSphero(addr string, adapter *BluetoothAdapter, l hclog.Logger) (*Sphero,
 
 	services, err := device.DiscoverServices([]bluetooth.UUID{})
 	if err != nil {
-		l.Error("Unable to get services for bluetooth deivce", "address", addr)
+		l.Error("Unable to get services for bluetooth deivce", "address", addr, "error", err)
 		return nil, err
 	}
 
@@ -75,7 +75,11 @@ func NewSphero(addr string, adapter *BluetoothAdapter, l hclog.Logger) (*Sphero,
 	charDFU := getCharacteristic(services, "00020002-574f-4f20-5370-6865726f2121")
 	charDFU2 := getCharacteristic(services, "00020004-574f-4f20-5370-6865726f2121")
 
+	// ensure the device does not sleep after 10s
+	charAntiDOS.WriteWithoutResponse([]byte("usetheforce...band"))
+
 	s := &Sphero{
+		device:      device,
 		charAPIV2:   charAPIV2,
 		charAntiDOS: charAntiDOS,
 		charDFU:     charDFU,
@@ -84,8 +88,21 @@ func NewSphero(addr string, adapter *BluetoothAdapter, l hclog.Logger) (*Sphero,
 	}
 
 	s.setup()
+	s.blink()
 
 	return s, nil
+}
+
+func (s *Sphero) blink() {
+	s.
+		SetLEDColor(255, 255, 255).
+		For(300*time.Millisecond).
+		SetLEDColor(255, 255, 255).
+		For(300*time.Millisecond).
+		SetLEDColor(255, 255, 255).
+		For(300*time.Millisecond).
+		SetLEDColor(0, 0, 0).
+		For(2 * time.Second)
 }
 
 func getCharacteristic(ds []bluetooth.DeviceService, uuid string) bluetooth.DeviceCharacteristic {
