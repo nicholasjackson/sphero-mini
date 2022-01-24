@@ -12,17 +12,26 @@ import (
 
 var doScan = flag.Bool("scan", false, "Scan for Bluetooth devices")
 var addr = flag.String("address", "", "Bluetooth address to connect to")
+var doSleep = flag.Bool("sleep", false, "Sleep device")
 
 func main() {
 	flag.Parse()
 
 	if *doScan {
 		scan()
+		return
+	}
+
+	if *addr != "" && *doSleep {
+		sleep(*addr)
+		return
 	}
 
 	if *addr != "" {
 		connect(*addr)
+		return
 	}
+
 }
 
 func scan() {
@@ -37,6 +46,24 @@ func scan() {
 	for r := range sr {
 		fmt.Printf("Found device: %s, address: %s\n", r.Name, r.Address.String())
 	}
+}
+
+func sleep(addr string) {
+	logger := createLogger()
+
+	adapter, err := sphero.NewBluetoothAdapter(logger)
+	if err != nil {
+		fmt.Printf("Unable to create a bluetooth adapter: %s\n", err)
+		os.Exit(1)
+	}
+
+	ball, err := sphero.NewSphero(addr, adapter, logger)
+	if err != nil {
+		fmt.Printf("Unable to create a new sphero: %s\n", err)
+		os.Exit(1)
+	}
+
+	ball.Sleep()
 }
 
 func connect(addr string) {

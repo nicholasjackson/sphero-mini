@@ -65,6 +65,17 @@ func (s *Sphero) GetBatteryVoltage() *Sphero {
 }
 
 func (s *Sphero) SetLEDColor(r, g, b uint8) *Sphero {
+	s.next = func() {
+		// TODO: if the next call is set LED do not turn off as the transition is smoother
+		s.setLEDColor(0, 0, 0)
+	}
+
+	s.setLEDColor(r, g, b)
+
+	return s
+}
+
+func (s *Sphero) setLEDColor(r, g, b uint8) *Sphero {
 	s.log.Debug("Enabling LED", "r", r, "g", g, "b", b)
 
 	payload := []byte{0x00, 0x0e, r, g, b}
@@ -115,6 +126,18 @@ func (s *Sphero) DisableBackLight() *Sphero {
 
 // Roll towards heading given in degrees 0-360 at speed as an integer 0-255
 func (s *Sphero) Roll(heading, speed int) *Sphero {
+	s.next = func() {
+		s.roll(0, 1)
+		// give the ball time to stop before changing direction
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	s.roll(heading, speed)
+
+	return s
+}
+
+func (s *Sphero) roll(heading, speed int) {
 	s.log.Debug("Roll", "heading", heading, "speed", speed)
 
 	speedH := uint8((speed & 0xFF00) >> 8)
@@ -124,19 +147,11 @@ func (s *Sphero) Roll(heading, speed int) *Sphero {
 
 	payload := []byte{speedL, headingH, headingL, speedH}
 
-	s.next = func() {
-		s.Roll(0, 1)
-		// give the ball time to stop before changing direction
-		time.Sleep(500 * time.Millisecond)
-	}
-
 	_, err := s.send(s.charAPIV2, DeviceDriving, DrivingCommandsWithHeading, true, payload)
 	if err != nil {
 		s.log.Error("unable to Roll in direction", "heading", heading, "speed", speed, "error", err)
 		s.lastError = err
 	}
-
-	return s
 }
 
 // https://github.com/MProx/Sphero_mini/blob/1dea6ff7f59260ea5ecee9cb9a7c9f46f1f8a6d9/sphero_mini.py#L243
