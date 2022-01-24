@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/nicholasjackson/sphero-mini"
@@ -52,6 +53,17 @@ func connect(addr string) {
 		fmt.Printf("Unable to create a new sphero: %s\n", err)
 		os.Exit(1)
 	}
+
+	sphero.DoFor(1*time.Second, func() {
+		s.SetLEDColor(235, 64, 52)
+	})
+
+	sphero.DoWithDelay(1*time.Second,
+		func() { s.SetLEDColor(235, 64, 52) },
+		func() { s.SetLEDColor(52, 235, 88) },
+		func() { s.SetLEDColor(52, 122, 235) },
+		func() { s.SetLEDColor(0, 0, 0) },
+	)
 
 	s.Sleep()
 
