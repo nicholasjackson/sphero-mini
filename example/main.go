@@ -43,8 +43,10 @@ func scan() {
 
 	sr := ad.Scan()
 
+	fmt.Printf("%-30s %s\n", "Name", "Mac Address")
+	fmt.Printf("%-30s %s\n", "-----------------------------", "-----------------")
 	for r := range sr {
-		fmt.Printf("Found device: %s, address: %s\n", r.Name, r.Address.String())
+		fmt.Printf("%-30s %s\n", r.Name, r.Address.String())
 	}
 }
 
@@ -95,10 +97,10 @@ func connect(addr string) {
 
 	time.Sleep(5 * time.Second)
 
-	ball.Roll(0, 150).
-		For(1*time.Second).
-		Roll(180, 150).
-		For(1 * time.Second)
+	//ball.Roll(0, 150).
+	//	For(1*time.Second).
+	//	Roll(180, 150).
+	//	For(1 * time.Second)
 
 	ball.Sleep()
 }

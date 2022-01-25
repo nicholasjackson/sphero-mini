@@ -23,6 +23,7 @@ type ScanResult struct {
 	Address bluetooth.Addresser
 }
 
+// NewBluetoothAdapter creates and initializes the default bluetooth adapter on the machine
 func NewBluetoothAdapter(l hclog.Logger) (*BluetoothAdapter, error) {
 	err := defaultAdapter.Enable()
 	if err != nil {
@@ -52,11 +53,14 @@ func (b *BluetoothAdapter) Scan() chan ScanResult {
 	return b.scanResult
 }
 
+// StopScanning stops the scanning process and closes the ScanResult channel
+// returned by the Scan function
 func (b *BluetoothAdapter) StopScanning() {
 	b.adapter.StopScan()
 	close(b.scanResult)
 }
 
+// Connect to a bluetooth device
 func (b *BluetoothAdapter) Connect(addr bluetooth.Addresser) (*bluetooth.Device, error) {
 	b.adapter.SetConnectHandler(func(device bluetooth.Addresser, connected bool) {
 		b.log.Trace("Connection status changed", "connected", connected)

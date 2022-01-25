@@ -8,9 +8,8 @@ import (
 	"tinygo.org/x/bluetooth"
 )
 
-// Sphero protocol
+// Sphero defines a type that can communicate with a Sphero Mini over Bluetooth LE
 // https://sdk.sphero.com/docs/api_spec/general_api
-
 type Sphero struct {
 	device                  *bluetooth.Device
 	charAPIV2               bluetooth.DeviceCharacteristic
@@ -20,15 +19,43 @@ type Sphero struct {
 	sequenceNo              int
 	log                     hclog.Logger
 	outBuffer               []byte
-	commandResponse         chan *Payload
-	streamingResponse       chan *Payload
+	commandResponse         chan *payload
+	streamingResponse       chan *payload
 	expectedCommandSequence int
 	lastError               error
 	backlightEnabled        bool
 	next                    func()
 }
 
-// NewSphero creates a new sphero and attempts to connect to the device
+// NewSphero creates a new Sphero and attempts to connect to the device
+// addr can either be supplied as the mac address for the bluetooth device name
+//
+// example:
+//	logger := hclog.Default()
+//
+//	// create the bluetooth adapter the sphero uses to interface with the computers bluetooth
+//	// stack
+//	adapter, err := sphero.NewBluetoothAdapter(logger)
+//	if err != nil {
+//		fmt.Printf("Unable to create a bluetooth adapter: %s\n", err)
+//		os.Exit(1)
+//	}
+//
+//	// create the sphero
+//	ball, err := sphero.NewSphero(addr, adapter, logger)
+//	if err != nil {
+//		fmt.Printf("Unable to create a new sphero: %s\n", err)
+//		os.Exit(1)
+//	}
+//
+//	// flash the LEDS Red, Green, and Blue
+//	ball.
+//		SetLEDColor(235, 64, 52).
+//		For(1*time.Second).
+//		SetLEDColor(52, 235, 88).
+//		For(1*time.Second).
+//		SetLEDColor(52, 122, 235).
+//		For(1 * time.Second)
 func NewSphero(addr string, adapter *BluetoothAdapter, l hclog.Logger) (*Sphero, error) {
 	var bleAddress bluetooth.Addresser
 
@@ -123,8 +150,8 @@ func getCharacteristic(ds []bluetooth.DeviceService, uuid string) bluetooth.Devi
 
 func (s *Sphero) setup() error {
 	s.log.Debug("Setup Sphero")
-	s.commandResponse = make(chan *Payload)
-	s.streamingResponse = make(chan *Payload)
+	s.commandResponse = make(chan *payload)
+	s.streamingResponse = make(chan *payload)
 
 	s.charAPIV2.EnableNotifications(func(buf []byte) {
 		//s.log.Trace("Got response apiv2", "data", buf)
@@ -140,8 +167,8 @@ func (s *Sphero) setup() error {
 		// if end packet send to channel
 		if buf[0] == DataPacketEnd {
 			// construct the payload
-			p := &Payload{}
-			p.Decode(s.outBuffer)
+			p := &payload{}
+			p.decode(s.outBuffer)
 
 			if s.expectedCommandSequence == int(p.Sequence) {
 				s.expectedCommandSequence = 0

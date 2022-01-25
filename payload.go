@@ -2,7 +2,7 @@ package sphero
 
 import "fmt"
 
-type Payload struct {
+type payload struct {
 	Flags    uint8
 	DeviceID uint8
 	Command  uint8
@@ -11,7 +11,7 @@ type Payload struct {
 	Payload  []byte
 }
 
-func (p *Payload) Encode() []byte {
+func (p *payload) encode() []byte {
 	sendBytes := []byte{
 		DataPacketStart, // first byte is always 0x08
 		p.Flags,         // set the flags
@@ -31,7 +31,7 @@ func (p *Payload) Encode() []byte {
 	return sendBytes
 }
 
-func (p *Payload) Decode(d []byte) error {
+func (p *payload) decode(d []byte) error {
 	p.Flags = d[1]
 	p.DeviceID = d[2]
 	p.Command = d[3]
