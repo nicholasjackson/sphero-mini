@@ -2,10 +2,13 @@ package sphero
 
 import (
 	"fmt"
+	"runtime"
 	"time"
 
 	"tinygo.org/x/bluetooth"
 )
+
+var receiveTimeout = 10 * time.Millisecond
 
 // Wait is a noop is used to create delay in a chain of commands
 //
@@ -23,6 +26,7 @@ func (s *Sphero) Wait() *Sphero {
 // The following example sets the Spheros LEDs to white for 1 second
 //	s.SetLEDColor(255,255,255).For(1*time.Second)
 func (s *Sphero) For(d time.Duration) *Sphero {
+	s.log.Debug("Wait", "duration", d)
 	time.Sleep(d)
 
 	if s.next != nil {
@@ -224,12 +228,13 @@ func (s *Sphero) send(dc bluetooth.DeviceCharacteristic, deviceID, commandID byt
 		return nil, err
 	}
 
-	if !expectResponse {
+	// TODO, for some reason
+	if !expectResponse || runtime.GOOS == "darwin" {
 		return nil, nil
 	}
 
 	// wait for response
-	timeout := time.After(10 * time.Second)
+	timeout := time.After(receiveTimeout)
 	select {
 	case <-timeout:
 		s.log.Error("Timeout waiting for response")

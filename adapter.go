@@ -2,18 +2,21 @@ package sphero
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/hashicorp/go-hclog"
 	"tinygo.org/x/bluetooth"
 )
 
 var defaultAdapter = bluetooth.DefaultAdapter
+var connectionTimeout = 60 * time.Second
 
 // BluetoothAdapter allows the interaction with the phyiscal bluetooth stack
 type BluetoothAdapter struct {
-	adapter    *bluetooth.Adapter
-	log        hclog.Logger
-	scanResult chan ScanResult
+	adapter     *bluetooth.Adapter
+	log         hclog.Logger
+	scanResult  chan ScanResult
+	scanStopped chan bool
 }
 
 // ScanResult is returned from the Scan function and encapsulates the
@@ -31,24 +34,34 @@ func NewBluetoothAdapter(l hclog.Logger) (*BluetoothAdapter, error) {
 		return nil, err
 	}
 
-	return &BluetoothAdapter{adapter: defaultAdapter, log: l}, nil
+	return &BluetoothAdapter{adapter: defaultAdapter, log: l, scanResult: make(chan ScanResult)}, nil
 }
 
 // Scan for bluetooth devices, this method returns a channel of ScanResult
 // that can be constantly itterated over to print the devices
 func (b *BluetoothAdapter) Scan() chan ScanResult {
-	b.scanResult = make(chan ScanResult)
+	b.scanStopped = make(chan bool, 1)
 
-	go func() {
-		b.adapter.Scan(func(a *bluetooth.Adapter, d bluetooth.ScanResult) {
+	go func(results chan ScanResult, stop chan bool) {
+		err := b.adapter.Scan(func(a *bluetooth.Adapter, d bluetooth.ScanResult) {
 			name := d.LocalName()
 			if name == "" {
 				name = "UNKNOWN"
 			}
 
-			b.scanResult <- ScanResult{Name: name, Address: d.Address}
+			select {
+			case <-stop:
+				return
+			default:
+			}
+
+			results <- ScanResult{Name: name, Address: d.Address}
 		})
-	}()
+
+		if err != nil {
+			panic(err)
+		}
+	}(b.scanResult, b.scanStopped)
 
 	return b.scanResult
 }
@@ -57,7 +70,7 @@ func (b *BluetoothAdapter) Scan() chan ScanResult {
 // returned by the Scan function
 func (b *BluetoothAdapter) StopScanning() {
 	b.adapter.StopScan()
-	close(b.scanResult)
+	b.scanStopped <- true
 }
 
 // Connect to a bluetooth device
@@ -66,8 +79,10 @@ func (b *BluetoothAdapter) Connect(addr bluetooth.Addresser) (*bluetooth.Device,
 		b.log.Trace("Connection status changed", "connected", connected)
 	})
 
-	device, err := b.adapter.Connect(addr, bluetooth.ConnectionParams{})
-	if err != nil {
+	// TODO, connection timeout on Darwin does not seem to be honored
+	device, err := b.adapter.Connect(addr, bluetooth.ConnectionParams{ConnectionTimeout: bluetooth.NewDuration(connectionTimeout)})
+
+	if err != nil || device == nil {
 		return nil, fmt.Errorf("unable to connect to device: %s", err)
 	}
 

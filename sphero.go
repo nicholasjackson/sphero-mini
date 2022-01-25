@@ -8,6 +8,8 @@ import (
 	"tinygo.org/x/bluetooth"
 )
 
+var discoverTimeout = 60 * time.Second
+
 // Sphero defines a type that can communicate with a Sphero Mini over Bluetooth LE
 // https://sdk.sphero.com/docs/api_spec/general_api
 type Sphero struct {
@@ -57,43 +59,38 @@ type Sphero struct {
 //		SetLEDColor(52, 122, 235).
 //		For(1 * time.Second)
 func NewSphero(addr string, adapter *BluetoothAdapter, l hclog.Logger) (*Sphero, error) {
-	var bleAddress bluetooth.Addresser
+	var device *bluetooth.Device
+	var err error
 
-	l.Trace("Discovering device for", "address", addr)
+	// try multiple times as Darwin bluetooth is flakey
+	for i := 0; i < 5; i++ {
+		l.Debug("Connecting to device", "address", addr, "attempt", i+1)
 
-	ac := make(chan bluetooth.Addresser)
-	to := time.After(10 * time.Second)
-
-	sr := adapter.Scan()
-
-	go func() {
-		for r := range sr {
-			if r.Name == addr || r.Address.String() == addr {
-				l.Debug("Found device", "addr", addr)
-				ac <- r.Address
-				adapter.StopScanning()
-			}
+		device, err = setupConnection(addr, adapter, l)
+		if device != nil && err == nil {
+			break
 		}
-	}()
-
-	select {
-	case bleAddress = <-ac:
-		l.Debug("Found device", "address", addr)
-	case <-to:
-		return nil, fmt.Errorf("timeout while trying to connect to address: %s", addr)
 	}
 
-	l.Debug("Connecting", "device", addr)
-
-	device, err := adapter.Connect(bleAddress)
-	if err != nil {
-		l.Error("Unable to connect to bluetooth deivce", "address", addr)
+	if err != nil || device == nil {
+		l.Error("Unable to connect to bluetooth device", "address", addr, "error", err)
 		return nil, err
 	}
 
-	services, err := device.DiscoverServices([]bluetooth.UUID{})
+	var services []bluetooth.DeviceService
+
+	// try multiple times as Darwin bluetooth is flakey
+	for i := 0; i < 5; i++ {
+		l.Debug("Attempting to discover services", "address", addr, "attempt", i+1)
+
+		services, err = device.DiscoverServices([]bluetooth.UUID{})
+		if err == nil && len(services) > 0 {
+			break
+		}
+	}
+
 	if err != nil {
-		l.Error("Unable to get services for bluetooth deivce", "address", addr, "error", err)
+		l.Error("Unable to get services for bluetooth device", "address", addr, "error", err)
 		return nil, err
 	}
 
@@ -132,6 +129,41 @@ func (s *Sphero) blink() {
 		For(2 * time.Second)
 }
 
+func setupConnection(addr string, adapter *BluetoothAdapter, l hclog.Logger) (*bluetooth.Device, error) {
+	var bleAddress bluetooth.Addresser
+
+	ac := make(chan bluetooth.Addresser)
+	to := time.After(discoverTimeout)
+
+	sr := adapter.Scan()
+	defer adapter.StopScanning()
+
+	go func() {
+		for r := range sr {
+			if r.Name == addr || r.Address.String() == addr {
+				ac <- r.Address
+			}
+		}
+	}()
+
+	select {
+	case bleAddress = <-ac:
+		l.Trace("Found device", "address", addr)
+	case <-to:
+		return nil, fmt.Errorf("timeout while trying to find device: %s", addr)
+	}
+
+	l.Trace("Connecting", "device", addr)
+
+	device, err := adapter.Connect(bleAddress)
+	if err != nil {
+		l.Trace("Unable to connect to bluetooth device", "address", addr, "error", err)
+		return nil, err
+	}
+
+	return device, nil
+}
+
 func getCharacteristic(ds []bluetooth.DeviceService, uuid string) bluetooth.DeviceCharacteristic {
 	uu, err := bluetooth.ParseUUID(uuid)
 	if err != nil {
@@ -140,7 +172,7 @@ func getCharacteristic(ds []bluetooth.DeviceService, uuid string) bluetooth.Devi
 
 	for _, s := range ds {
 		c, err := s.DiscoverCharacteristics([]bluetooth.UUID{uu})
-		if err == nil {
+		if err == nil && len(c) > 0 {
 			return c[0]
 		}
 	}
@@ -153,7 +185,7 @@ func (s *Sphero) setup() error {
 	s.commandResponse = make(chan *payload)
 	s.streamingResponse = make(chan *payload)
 
-	s.charAPIV2.EnableNotifications(func(buf []byte) {
+	err := s.charAPIV2.EnableNotifications(func(buf []byte) {
 		//s.log.Trace("Got response apiv2", "data", buf)
 
 		// if start packet create a new buffer
@@ -181,17 +213,33 @@ func (s *Sphero) setup() error {
 
 	})
 
-	s.charAntiDOS.EnableNotifications(func(buf []byte) {
+	if err != nil {
+		s.log.Error("Unable to receive notifications for charAPIV2", "error", err)
+	}
+
+	err = s.charAntiDOS.EnableNotifications(func(buf []byte) {
 		s.log.Trace("Got response antidos", "data", buf)
 	})
 
-	s.charDFU.EnableNotifications(func(buf []byte) {
+	if err != nil {
+		s.log.Error("Unable to receive notifications for charAntiDOS", "error", err)
+	}
+
+	err = s.charDFU.EnableNotifications(func(buf []byte) {
 		s.log.Trace("Got response dfu", "data", buf)
 	})
 
-	s.charDFU2.EnableNotifications(func(buf []byte) {
+	if err != nil {
+		s.log.Error("Unable to receive notifications for charDFU", "error", err)
+	}
+
+	err = s.charDFU2.EnableNotifications(func(buf []byte) {
 		s.log.Trace("Got response dfu2", "data", buf)
 	})
+
+	if err != nil {
+		s.log.Error("Unable to receive notifications for charDFU2", "error", err)
+	}
 
 	s.charAntiDOS.WriteWithoutResponse([]byte("usetheforce...band"))
 
