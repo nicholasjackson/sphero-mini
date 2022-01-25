@@ -8,7 +8,7 @@ import (
 	"tinygo.org/x/bluetooth"
 )
 
-var receiveTimeout = 10 * time.Millisecond
+var receiveTimeout = 10 * time.Second
 
 // Wait is a noop is used to create delay in a chain of commands
 //
