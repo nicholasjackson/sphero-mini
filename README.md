@@ -74,7 +74,7 @@ ball.
 Bluetooth support is limited to that provided by [TinyGo Bluetooth](https://github.com/tinygo-org/bluetooth) 
 at present this support covers the following platforms.
 
-* Mac Intel - Supported
+* Mac Intel - Supported but curently unstable
 * Mac Arm64 (M1) - Unknown
 * Linux Intel - Supported
 * Linux Arm64 - Supported
